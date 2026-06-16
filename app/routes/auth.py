@@ -8,10 +8,15 @@ import base64
 import json
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 
 from app.middleware.auth_middleware import get_current_user
-from app.models.user_model import CurrentUser, LoginRequest, LoginResponse, UserResponse
+from app.models.user_model import (
+    CurrentUser,
+    LoginRequest,
+    LoginResponse,
+    UserResponse,
+)
 from app.services.firebase import FirebaseService
 from app.services.user_service import UserService
 
@@ -23,7 +28,7 @@ user_service = UserService()
 
 
 @router.post("/login", response_model=LoginResponse, status_code=200)
-async def login(request: LoginRequest) -> LoginResponse:
+async def login(request: LoginRequest, response: Response) -> LoginResponse:
     """
     Login with email and password using Firebase Authentication.
     """
@@ -93,8 +98,15 @@ async def login(request: LoginRequest) -> LoginResponse:
                 detail="Firebase configuration error: token user does not match Auth user",
             )
 
+        response.set_cookie(
+            key="id_token",
+            value=id_token,
+            httponly=True,
+            samesite="lax",  # or "strict"
+            secure=True,  # Set to True in production
+            max_age=600,  # 10 minutes
+        )
         return LoginResponse(
-            id_token=id_token,
             user_id=user.uid,
             email=user.email,
             name=user_data.get("name", ""),
@@ -109,6 +121,16 @@ async def login(request: LoginRequest) -> LoginResponse:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response):
+    """
+    Clear the authentication cookie to log the user out.
+    """
+    response.delete_cookie(key="id_token")
+    return {"message": "Logout successful"}
+
 
 
 def _generate_id_token_via_rest_api(email: str, password: str, web_api_key: str) -> str:

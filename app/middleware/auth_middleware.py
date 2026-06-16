@@ -7,7 +7,8 @@ import base64
 import json
 import os
 
-from fastapi import Depends, HTTPException, status
+from typing import Optional
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.models.user_model import CurrentUser
@@ -16,7 +17,7 @@ from app.services.user_service import UserService
 
 
 logger = logging.getLogger(__name__)
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def _normalize_token(token: str) -> str:
@@ -40,13 +41,15 @@ def _decode_unverified_payload(token: str) -> dict:
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> CurrentUser:
     """
     Dependency for getting current authenticated user
 
     Args:
-        credentials: HTTP Bearer credentials
+        request: The incoming request, used to access cookies
+        credentials: HTTP Bearer credentials (optional)
 
     Returns:
         CurrentUser with user_id, email, role, and name
@@ -55,7 +58,19 @@ def get_current_user(
         firebase = FirebaseService()
         user_service = UserService()
 
-        token = _normalize_token(credentials.credentials)
+        # Try to get token from cookie first
+        token = request.cookies.get("id_token")
+
+        # If not in cookie, try Authorization header
+        if not token and credentials:
+            token = _normalize_token(credentials.credentials)
+
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication credentials were not provided.",
+            )
+
         if token.count(".") != 2:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -66,7 +81,11 @@ def get_current_user(
         token_payload = _decode_unverified_payload(token)
         token_audience = token_payload.get("aud")
 
-        if expected_project_id and token_audience and token_audience != expected_project_id:
+        if (
+            expected_project_id
+            and token_audience
+            and token_audience != expected_project_id
+        ):
             logger.warning(
                 "Firebase token project mismatch. token aud=%s expected=%s",
                 token_audience,
@@ -78,10 +97,10 @@ def get_current_user(
                     "Invalid ID token: token belongs to a different Firebase project"
                 ),
             )
-        
+
         # Log token verification attempt (first 50 chars for security)
         logger.debug(f"🔍 Verifying token: {token[:50]}...")
-        
+
         try:
             decoded_token = firebase.verify_id_token(token)
         except ValueError as token_error:
@@ -90,7 +109,7 @@ def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Invalid ID token: {str(token_error)}",
             )
-        
+
         user_id = decoded_token.get("uid") or decoded_token.get("user_id")
 
         if not user_id:
@@ -112,7 +131,9 @@ def get_current_user(
                 detail="User not found in database",
             )
 
-        logger.debug(f"✅ User found: {user_data.get('email')} (role: {user_data.get('role')})")
+        logger.debug(
+            f"✅ User found: {user_data.get('email')} (role: {user_data.get('role')})"
+        )
 
         return CurrentUser(
             user_id=user_id,
@@ -132,6 +153,7 @@ def get_current_user(
     except Exception as e:
         logger.error(f"❌ Unexpected authentication error: {str(e)}")
         import traceback
+
         logger.error(f"Traceback:\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

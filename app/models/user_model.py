@@ -57,7 +57,6 @@ class LoginRequest(BaseModel):
 class LoginResponse(BaseModel):
     """Schema for login response"""
 
-    id_token: str
     user_id: str
     email: str
     name: str
