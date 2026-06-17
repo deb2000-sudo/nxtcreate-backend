@@ -48,6 +48,18 @@ async def create_video_session(
     return _build_session_response(session, video_service)
 
 
+@router.get("/sessions", response_model=list[VideoSessionResponse])
+async def list_my_video_sessions(
+    current_user: CurrentUser = Depends(get_current_user),
+) -> list[VideoSessionResponse]:
+    """
+    List all video sessions owned by the current user, newest first.
+    """
+    video_service = VideoService()
+    sessions = video_service.list_user_sessions(current_user.user_id)
+    return [_build_session_response(session, video_service) for session in sessions]
+
+
 @router.get("/sessions/{session_id}", response_model=VideoSessionResponse)
 async def get_video_session(
     session_id: str,
@@ -103,6 +115,31 @@ async def get_video_playback_url(
         video_url=video_url,
         expires_in_seconds=expires_in_seconds,
     )
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_video_session(
+    session_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> None:
+    """
+    Delete one of the current user's completed video sessions.
+    """
+    video_service = VideoService()
+    session = video_service.get_user_session(session_id, current_user)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Video session not found",
+        )
+
+    if session.get("status") != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only completed videos can be deleted",
+        )
+
+    video_service.delete_session(session)
 
 
 def _build_session_response(

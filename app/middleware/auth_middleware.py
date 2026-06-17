@@ -57,20 +57,7 @@ def get_current_user(
     try:
         firebase = FirebaseService()
         user_service = UserService()
-        #Debugging for accesing cookie token
-        print("=" * 80)
-        print("REQUEST HEADERS")
-        print(dict(request.headers))
-        print("=" * 80)
-
-        print("REQUEST COOKIES")
-        print(request.cookies)
-        print("=" * 80)
-
-        print("COOKIE HEADER")
-        print(request.headers.get("cookie"))
-        print("=" * 80)
-
+        
         # Try to get token from cookie first
         token = request.cookies.get("id_token")
 

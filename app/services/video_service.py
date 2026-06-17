@@ -158,6 +158,28 @@ class VideoService:
         )
         return sorted(sessions, key=lambda s: s.get("created_at", ""), reverse=True)
 
+    def delete_session(self, session: dict[str, Any]) -> None:
+        """
+        Delete a session's GCS objects (best-effort) and its Firestore record.
+        """
+        for path_key in ("video_path", "image_path"):
+            gcs_uri = session.get(path_key)
+            if gcs_uri:
+                try:
+                    self._delete_gcs_uri(gcs_uri)
+                except Exception as e:
+                    logger.warning(
+                        "Failed to delete %s for session %s: %s",
+                        gcs_uri,
+                        session.get("id"),
+                        str(e),
+                    )
+        self.firebase.delete_document(self.collection, session["id"])
+
+    def _delete_gcs_uri(self, gcs_uri: str) -> None:
+        bucket_name, object_name = self._parse_gcs_uri(gcs_uri)
+        self._storage_client().bucket(bucket_name).blob(object_name).delete()
+
     def create_signed_video_url(self, session: dict[str, Any], expires_in_seconds: int) -> str:
         """
         Create a signed URL for the completed video.
