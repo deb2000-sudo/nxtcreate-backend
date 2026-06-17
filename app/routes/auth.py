@@ -102,7 +102,7 @@ async def login(request: LoginRequest, response: Response) -> LoginResponse:
             key="id_token",
             value=id_token,
             httponly=True,
-            samesite="lax",  # or "strict"
+            samesite="none",  # or "strict"
             secure=True,  # Set to True in production
             max_age=600,  # 10 minutes
         )
