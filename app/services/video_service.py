@@ -149,6 +149,15 @@ class VideoService:
 
         return {"id": session_id, **session}
 
+    def list_user_sessions(self, user_id: str) -> list[dict[str, Any]]:
+        """
+        Return all video sessions owned by a user, newest first.
+        """
+        sessions = self.firebase.query_collection(
+            self.collection, "user_id", "==", user_id
+        )
+        return sorted(sessions, key=lambda s: s.get("created_at", ""), reverse=True)
+
     def create_signed_video_url(self, session: dict[str, Any], expires_in_seconds: int) -> str:
         """
         Create a signed URL for the completed video.
